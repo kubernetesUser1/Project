@@ -1,0 +1,148 @@
+# Secret definition for MariaDB credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mariadb-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=  # Base64 encoded value for "password"
+
+---
+
+# Persistent Volume definition for MariaDB
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mariadb-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/mariadb
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+
+---
+
+# Persistent Volume Claim for MariaDB
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+
+---
+
+# ConfigMap for MariaDB configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mariadb-config
+data:
+  my.cnf: |
+    [mysqld]
+    max_connections=200
+    sql_mode=STRICT_TRANS_TABLES
+
+---
+
+# Headless Service for MariaDB
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb-headless
+spec:
+  clusterIP: None
+  ports:
+    - port: 3306
+  selector:
+    app: mariadb
+
+---
+
+# StatefulSet for MariaDB
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+spec:
+  serviceName: "mariadb-headless"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+        - name: mariadb
+          image: mariadb:10.5
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb-secret
+                  key: MYSQL_ROOT_PASSWORD
+          volumeMounts:
+            - name: mariadb-data
+              mountPath: /var/lib/mysql
+            - name: mariadb-config
+              mountPath: /etc/mysql/my.cnf
+              subPath: my.cnf
+  volumeClaimTemplates:
+    - metadata:
+        name: mariadb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+
+# CronJob for MariaDB Backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mariadb-backup
+spec:
+  schedule: "0 2 * * *"  # Backup at 2 AM daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mariadb-backup
+              image: mariadb:10.5
+              command:
+                - sh
+                - -c
+                - |
+                  mysqldump -u root --password=$MYSQL_ROOT_PASSWORD --all-databases > /mnt/backups/mariadb-backup.sql
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mariadb-secret
+                      key: MYSQL_ROOT_PASSWORD
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /mnt/backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: mariadb-backup-pvc
+

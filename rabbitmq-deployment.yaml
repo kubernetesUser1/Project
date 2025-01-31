@@ -1,0 +1,161 @@
+# Secret for RabbitMQ
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+data:
+  RABBITMQ_DEFAULT_USER: cmFiYml0bXFlc3Q=  # Base64 for "rabbitmqest"
+  RABBITMQ_DEFAULT_PASS: cGFzc3dvcmQ=       # Base64 for "password"
+---
+# PersistentVolume for RabbitMQ
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rabbitmq-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/rabbitmq
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+---
+# PersistentVolumeClaim for RabbitMQ
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+---
+# ConfigMap 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+data:
+  rabbitmq.config: |
+    [
+      {rabbit, [
+        {tcp_listeners, [5672]},
+        {loopback_users, []},
+        {default_user, <<"${RABBITMQ_DEFAULT_USER}">>},
+        {default_pass, <<"${RABBITMQ_DEFAULT_PASS}">>}
+      ]}
+    ].
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  clusterIP: None 
+  ports:
+    - name: amqp
+      port: 5672
+    - name: management
+      port: 15672
+  selector:
+    app: rabbitmq
+
+---
+# StatefulSet for RabbitMQ
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+spec:
+  serviceName: "rabbitmq"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management
+          ports:
+            - containerPort: 5672
+              name: amqp
+            - containerPort: 15672
+              name: management
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+            - name: rabbitmq-config
+              mountPath: /etc/rabbitmq/rabbitmq.config
+              subPath: rabbitmq.config
+            - name: backup-storage
+              mountPath: /mnt/backups
+          envFrom:
+            - secretRef:
+                name: rabbitmq-secret
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+    - metadata:
+        name: backup-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rabbitmq-backup
+spec:
+  schedule: "0 3 * * *"  # Backup at 3 AM daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: rabbitmq-backup
+              image: rabbitmq:3-management
+              command:
+                - sh
+                - -c
+                - |
+                  # Backup RabbitMQ data (customize based on your backup process)
+                  rabbitmqctl export_definitions /mnt/backups/rabbitmq-backup.json
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /mnt/backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: rabbitmq-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+

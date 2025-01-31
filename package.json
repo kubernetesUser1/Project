@@ -1,0 +1,21 @@
+{
+  "name": "kube-postgre-deployment",
+  "version": "1.0.0",
+  "description": "Kubernetes deployment for PostgreSQL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^0.17.1",
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "fs": "^0.0.1-security",
+    "js-yaml": "^4.1.0",
+    "punycode": "^2.3.1",
+    "yaml": "^2.7.0"
+  },
+  "author": "Jothika",
+  "license": "MIT"
+}

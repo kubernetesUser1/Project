@@ -1,0 +1,161 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-secret
+type: Opaque
+data:
+  KAFKA_USER: YWRtaW4=  # base64 encoded 'admin'
+  KAFKA_PASSWORD: cGFzc3dvcmQ=  # base64 encoded 'password'
+---
+# ConfigMap for Kafka configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+data:
+  KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+  KAFKA_LISTENER_PORT: "9093"
+  KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9093"
+  KAFKA_LISTENER_NAME: PLAINTEXT
+  KAFKA_LISTENER_INTERFACENAME: "0.0.0.0"
+  KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+
+---
+# PersistentVolume for Kafka Data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kafka-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/kafka
+  persistentVolumeReclaimPolicy: Retain
+
+---
+# PersistentVolumeClaim for Kafka Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# PersistentVolume for Backup Data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: backup-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/kafka-backups
+  persistentVolumeReclaimPolicy: Retain
+
+---
+# PersistentVolumeClaim for Backup Data Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# CronJob for Backing Up Kafka PVC Data
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kafka-backup
+spec:
+  schedule: "0 3 * * *"  # Backup every day at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pvc-backup
+              image: busybox
+              command:
+                - "/bin/sh"
+                - "-c"
+                - |
+                  BACKUP_DIR=/backup
+                  PVC_DIR=/data
+                  TIMESTAMP=$(date +%F-%H-%M-%S)
+                  tar czf ${BACKUP_DIR}/kafka-backup-${TIMESTAMP}.tar.gz -C ${PVC_DIR} .
+              volumeMounts:
+                - name: kafka-storage
+                  mountPath: /data
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: kafka-storage
+              persistentVolumeClaim:
+                claimName: kafka-pvc
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-pvc
+
+---
+# StatefulSet for Kafka Deployment
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+spec:
+  serviceName: kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: wurstmeister/kafka:latest
+          ports:
+            - containerPort: 9093
+          envFrom:
+            - configMapRef:
+                name: kafka-config
+          volumeMounts:
+            - name: kafka-storage
+              mountPath: /var/lib/kafka
+      volumes:
+        - name: kafka-storage
+          persistentVolumeClaim:
+            claimName: kafka-pvc
+
+---
+# Headless Service for Kafka StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+spec:
+  ports:
+    - port: 9093
+      targetPort: 9093
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: kafka

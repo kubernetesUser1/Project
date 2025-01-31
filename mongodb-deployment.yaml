@@ -1,0 +1,141 @@
+# Secret for MongoDB credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secret
+type: Opaque
+data:
+  MONGO_INITDB_ROOT_USERNAME: bW9uZ29hZG1pbg==  # Base64 for "mongoadmin"
+  MONGO_INITDB_ROOT_PASSWORD: cGFzc3dvcmQ=       # Base64 for "password"
+---
+# PersistentVolume for MongoDB
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongodb-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/mongodb
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+---
+# PersistentVolumeClaim for MongoDB
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+---
+# Service for MongoDB
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  clusterIP: None
+  ports:
+    - port: 27017
+  selector:
+    app: mongodb
+---
+# ConfigMap for MongoDB configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-config
+data:
+  mongodb.conf: |
+    storage:
+      dbPath: /data/db
+---
+# StatefulSet for MongoDB
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+spec:
+  serviceName: "mongodb"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:4.2
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+          envFrom:
+            - secretRef:
+                name: mongodb-secret  # Correct format with an array
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+# PersistentVolumeClaim for Backup Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+---
+# CronJob for MongoDB Backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongodb-backup
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: mongodb-backup
+              image: mongo:4.2
+              command:
+                - sh
+                - -c
+                - |
+                  mongodump --uri="mongodb://$(MONGO_INITDB_ROOT_USERNAME):$(MONGO_INITDB_ROOT_PASSWORD)@mongodb:27017" --out=/mnt/backups/mongodb-backup-$(date +%F)
+              envFrom:
+                - secretRef:
+                    name: mongodb-secret  # Correct format with an array
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /mnt/backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: mongodb-backup-pvc
+

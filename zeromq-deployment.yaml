@@ -1,0 +1,137 @@
+# Secret for ZeroMQ
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zeromq-secret
+type: Opaque
+data:
+  APP_USERNAME: c29tZXVzZXI=  # Base64 encoded value for 'someuser'
+  APP_PASSWORD: c29tZXBhc3M=  # Base64 encoded value for 'somepass'
+---
+# ConfigMap for ZeroMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zeromq-config
+data:
+  zeromq.conf: |
+    setting1=value1
+    setting2=value2
+---
+# PersistentVolume for backups
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: zeromq-backup-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/zeromq-backups
+---
+# PersistentVolumeClaim for backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zeromq-backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Headless Service for ZeroMQ
+apiVersion: v1
+kind: Service
+metadata:
+  name: zeromq
+spec:
+  clusterIP: None
+  ports:
+    - port: 5555
+      targetPort: 5555
+  selector:
+    app: zeromq
+---
+# StatefulSet for ZeroMQ
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zeromq
+spec:
+  serviceName: "zeromq"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zeromq
+  template:
+    metadata:
+      labels:
+        app: zeromq
+    spec:
+      containers:
+        - name: zeromq
+          image: zeromq/zeromq:latest
+          ports:
+            - containerPort: 5555
+          env:
+            - name: APP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: zeromq-secret
+                  key: APP_USERNAME
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zeromq-secret
+                  key: APP_PASSWORD
+          volumeMounts:
+            - name: zeromq-storage
+              mountPath: /var/lib/zeromq
+            - name: zeromq-config
+              mountPath: /etc/zeromq/zeromq.conf
+              subPath: zeromq.conf
+      volumes:
+        - name: zeromq-config
+          configMap:
+            name: zeromq-config
+  volumeClaimTemplates:
+    - metadata:
+        name: zeromq-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# CronJob for backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: zeromq-backup
+spec:
+  schedule: "0 3 * * *" # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: zeromq-backup
+              image: busybox
+              command:
+                - /bin/sh
+                - -c
+                - cp -r /var/lib/zeromq/* /mnt/backups/
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /mnt/backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: zeromq-backup-pvc
+

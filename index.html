@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Deployment Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            display: grid;
+            #grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: auto auto auto;
+            gap: 20px;
+            padding: 20px;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            padding: 20px;
+        }
+        .card img {
+            width: 50px;
+            height: 50px;
+            margin-bottom: 15px;
+        }
+        .card h3 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .card p {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .card button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .card button:hover {
+            background-color: #0056b3;
+        }
+        .slider-container {
+            margin: 15px 0;
+        }
+        .slider-container label {
+            display: block;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .slider-container input[type="range"] {
+            width: 100%;
+        }
+        .slider-value {
+            font-weight: bold;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- PostgreSQL Card -->
+        <div class="card">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" alt="PostgreSQL">
+
+
+		<h3>PostgreSQL</h3>
+            <p>Powerful, open-source object-relational database system.</p>
+            <div class="slider-container">
+                <label for="postgres-replica">Replicas: <span id="postgres-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="postgres-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('postgres')">
+            </div>
+            <button onclick="deploy('postgres')">DEPLOY</button>
+            <button onclick="scaleInstance('postgres')">SCALE</button>
+        </div>
+
+
+        <!-- Apache CouchDB Card -->
+        <div class="card">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/7/72/Apache_CouchDB_logo.svg" alt="Apache CouchDB">
+
+
+		<h3>Apache CouchDB</h3>
+            <p>Software that focuses on ease of use with a flexible schema.</p>
+           <div class="slider-container">
+                <label for="couchdb-replica">Replicas: <span id="couchdb-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="couchdb-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('couchdb')">
+            </div>
+            <button onclick="deploy('couchdb')">DEPLOY</button>
+            <button onclick="scaleInstance('couchdb')">SCALE</button>
+        </div>
+
+
+        <!-- MariaDB Card -->
+        <div class="card">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/MariaDB_colour_logo.svg" alt="MariaDB" style="width:auto">
+
+
+		<h3>MariaDB</h3>
+            <p>A community-developed fork of the MySQL database.</p>
+            <div class="slider-container">
+                <label for="mariadb-replica">Replicas: <span id="mariadb-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="mariadb-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('mariadb')">
+            </div>
+            <button onclick="deploy('mariadb')">DEPLOY</button>
+            <button onclick="scaleInstance('mariadb')">SCALE</button>
+        </div>
+
+
+        <!-- MongoDB Card -->
+        <div class="card">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/MongoDB_Logo.svg" alt="MongoDB" style="width:auto">
+
+
+		<h3>MongoDB</h3>
+            <p>A free and open-source document-oriented database program.</p>
+            <div class="slider-container">
+                <label for="mongodb-replica">Replicas: <span id="mongodb-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="mongodb-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('mongodb')">
+            </div>
+            <button onclick="deploy('mongodb')">DEPLOY</button>
+            <button onclick="scaleInstance('mongodb')">SCALE</button>
+        </div>
+
+
+        <!-- RabbitMQ Card -->
+        <div class="card">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/7/71/RabbitMQ_logo.svg" alt="RabbitMQ" style="width:auto">
+
+
+            <h3>RabbitMQ</h3>
+            <p>Open-source message broker software for reliable communication.</p>
+            <div class="slider-container">
+                <label for="rabbitmq-replica">Replicas: <span id="rabbitmq-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="rabbitmq-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('rabbitmq')">
+            </div>
+            <button onclick="deploy('rabbitmq')">DEPLOY</button>
+            <button onclick="scaleInstance('rabbitmq')">SCALE</button>
+        </div>
+
+
+        <!-- ZeroMQ Card -->
+        <div class="card">
+             <img src="https://vmssoftware.com/images/intro/product/zeromq.png" alt="ZeroMQ" style="width:auto">
+
+
+	    <h3>ZeroMQ</h3>
+            <p>Asynchronous messaging library for scalable distributed systems.</p>
+            <div class="slider-container">
+                <label for="zeromq-replica">Replicas: <span id="zeromq-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="zeromq-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('zeromq')">
+            </div>
+            <button onclick="deploy('zeromq')">DEPLOY</button>
+            <button onclick="scaleInstance('zeromq')">SCALE</button>
+        </div>
+
+
+        <!-- ActiveMQ Card -->
+        <div class="card">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/5/54/Apache_ActiveMQ_Logo.svg" alt="ActiveMQ">
+	    <h3>ActiveMQ</h3>
+            <p>A flexible, multi-protocol message broker solution.</p>
+            <div class="slider-container">
+                <label for="activemq-replica">Replicas: <span id="activemq-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="activemq-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('activemq')">
+            </div>
+            <button onclick="deploy('activemq')">DEPLOY</button>
+            <button onclick="scaleInstance('activemq')">SCALE</button>
+        </div>
+
+
+        <!-- Kafka Card -->
+        <div class="card">
+	    <img src="https://upload.wikimedia.org/wikipedia/commons/0/01/Apache_Kafka_logo.svg" alt="Kafka">
+            <h3>Kafka</h3>
+            <p>Stream processing and distributed event store platform.</p>
+            <div class="slider-container">
+                <label for="kafka-replica">Replicas: <span id="kafka-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="kafka-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('kafka')">
+            </div>
+            <button onclick="deploy('kafka')">DEPLOY</button>
+            <button onclick="scaleInstance('kafka')">SCALE</button>
+        </div>
+
+
+        <!-- Elasticsearch Card -->
+        <div class="card">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/f/f4/Elasticsearch_logo.svg" alt="Elasticsearch" style="width:auto">
+		<h3>Elasticsearch</h3>
+            <p>Search and analytics engine for structured and unstructured data.</p>
+            <div class="slider-container">
+                <label for="elasticsearch-replica">Replicas: <span id="elasticsearch-replica-value" class="slider-value">1</span></label>
+                <input type="range" id="elasticsearch-replica" value="1" min="1" max="10" step="1" oninput="updateReplicaValue('elasticsearch')">
+            </div>
+            <button onclick="deploy('elasticsearch')">DEPLOY</button>
+            <button onclick="scaleInstance('elasticsearch')">SCALE</button>
+        </div>
+    </div>
+
+
+    <script src='script.js'></script>
+    <script>
+        function updateReplicaValue(service) {
+            const slider = document.getElementById(`${service}-replica`);
+            const valueDisplay = document.getElementById(`${service}-replica-value`);
+            valueDisplay.textContent = slider.value;
+        }
+
+
+    </script>
+</body>
+</html>

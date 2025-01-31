@@ -1,0 +1,172 @@
+# Secret for CouchDB credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: couchdb-secret
+type: Opaque
+data:
+  COUCHDB_USER: YWRtaW4=        # Base64 encoded 'admin'
+  COUCHDB_PASSWORD: cGFzc3dvcmQ=  # Base64 encoded 'password'
+
+---
+# ConfigMap for CouchDB configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: couchdb-config
+data:
+  COUCHDB_NODE_NAME: "couchdb@127.0.0.1"
+  COUCHDB_PORT: "5984"
+
+---
+# PersistentVolume for CouchDB data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: couchdb-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/couchdb
+  persistentVolumeReclaimPolicy: Retain
+
+---
+# PersistentVolumeClaim for CouchDB data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: couchdb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# PersistentVolume for Backup Data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: couchdb-backup-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/couchdb-backups
+  persistentVolumeReclaimPolicy: Retain
+
+---
+# PersistentVolumeClaim for Backup Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: couchdb-backup-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Headless Service for CouchDB StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: couchdb
+spec:
+  ports:
+    - port: 5984
+      targetPort: 5984
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: couchdb
+
+---
+# StatefulSet for CouchDB deployment
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: couchdb
+spec:
+  serviceName: couchdb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: couchdb
+  template:
+    metadata:
+      labels:
+        app: couchdb
+    spec:
+      containers:
+        - name: couchdb
+          image: apache/couchdb:latest
+          ports:
+            - containerPort: 5984
+          env:
+            - name: COUCHDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: couchdb-secret
+                  key: COUCHDB_USER
+            - name: COUCHDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: couchdb-secret
+                  key: COUCHDB_PASSWORD
+            - name: COUCHDB_NODE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: couchdb-config
+                  key: COUCHDB_NODE_NAME
+          volumeMounts:
+            - name: couchdb-storage
+              mountPath: /opt/couchdb/data
+      volumes:
+        - name: couchdb-storage
+          persistentVolumeClaim:
+            claimName: couchdb-pvc
+
+---
+# CronJob for Backing Up CouchDB PVC Data
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: couchdb-backup
+spec:
+  schedule: "0 3 * * *"  # Backup every day at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pvc-backup
+              image: busybox
+              command:
+                - "/bin/sh"
+                - "-c"
+                - |
+                  BACKUP_DIR=/backup
+                  PVC_DIR=/data
+                  TIMESTAMP=$(date +%F-%H-%M-%S)
+                  tar czf ${BACKUP_DIR}/couchdb-backup-${TIMESTAMP}.tar.gz -C ${PVC_DIR} .
+              volumeMounts:
+                - name: couchdb-storage
+                  mountPath: /data
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: couchdb-storage
+              persistentVolumeClaim:
+                claimName: couchdb-pvc
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: couchdb-backup-pvc
